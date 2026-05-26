@@ -3129,7 +3129,6 @@ def get_device_tflops(
         return ds_tops
 
     if device is not None and device.type != "cuda":
-    if not torch.cuda.is_available():
         log.warning(
             "get_device_tflops: no Triton fallback available for non-CUDA devices. "
             "Returning 0.0; roofline estimates will use memory bandwidth only."

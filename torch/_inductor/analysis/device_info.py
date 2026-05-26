@@ -236,19 +236,6 @@ def datasheet_tops(
     non-sparse data.
     """
     name = _get_device_name(device)
-    if torch.cuda.is_available():
-        name: str | None = torch.cuda.get_device_name()
-    elif torch.xpu.is_available():
-        name: str | None = torch.xpu.get_device_name()
-        log.info(
-            "No XPU devices are currently supported in the datasheet lookup. "
-            "To get accurate compute estimates, add your device to "
-            "torch/_inductor/analysis/device_info.py",
-        )
-    else:
-        log.info("No supported device available, skipping datasheet lookup")
-        return None
-
     if name is None:
         log.info("No datasheet device name found for %s, returning None", device)
         return None
