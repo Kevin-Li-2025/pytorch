@@ -511,7 +511,34 @@ def _normalize_shuffle_graph(shuffle_gm: torch.fx.GraphModule) -> None:
 def normalize_graph_module(gm: torch.fx.GraphModule) -> None:
     for node in gm.graph.nodes:
         if node.op == "placeholder":
-            node.meta["val"] = node.meta["example_value"]
+            if "example_value" in node.meta:
+                node.meta["val"] = node.meta["example_value"]
+            elif "val" not in node.meta:
+                raise KeyError("example_value")
+
+
+def restore_get_attr_targets(graph_module: torch.fx.GraphModule) -> None:
+    flat_name_to_original_fqn = graph_module.meta.get(
+        "dynamo_flat_name_to_original_fqn"
+    )
+    if not flat_name_to_original_fqn:
+        return
+
+    changed = False
+    for node in graph_module.graph.nodes:
+        if node.op != "get_attr" or node.target not in flat_name_to_original_fqn:
+            continue
+
+        original_fqn = flat_name_to_original_fqn[node.target]
+        try:
+            torch.fx.graph_module._get_attr(graph_module, original_fqn)
+        except AttributeError:
+            continue
+        node.target = original_fqn
+        changed = True
+
+    if changed:
+        graph_module.recompile()
 
 
 class InputProcessor:
@@ -711,6 +738,7 @@ def create_fx_graph_from_captured_output(
         dynamo_bytecode_unflatten,
     )  # type: ignore[attr-defined]
     normalize_graph_module(graph_module)
+    restore_get_attr_targets(graph_module)
     if hasattr(graph_module, "_dynamo_bytecode_flatten"):
         raise AssertionError(
             "graph_module already has _dynamo_bytecode_flatten attribute"
@@ -830,6 +858,8 @@ class _DynamoBytecodeCodeGen(torch.fx.graph.CodeGen):
 def dynamo_graph_capture_for_export(
     fn: Callable[..., Any],
     constraints: list[Constraint] | None = None,
+    *,
+    export: bool = False,
 ) -> Callable[..., Any]:
     if isinstance(fn, torch._ops.OpOverload):
 
@@ -859,7 +889,9 @@ def op_overload_wrapper({", ".join(arg_list)}):
         with (
             _compiling_state_context(),
             torch._dynamo.config.patch(
-                replay_side_effects=False, side_effect_replay_policy="warn"
+                replay_side_effects=False,
+                side_effect_replay_policy="warn",
+                lift_export_input_symbols=export,
             ),
             get_metrics_context(),
             dynamo_timed("fullgraph_capture"),
@@ -869,6 +901,7 @@ def op_overload_wrapper({", ".join(arg_list)}):
                 args,
                 kwargs,
                 constraints=constraints,
+                _is_export_deprecated_do_not_use=export,
             )
         graph_module = create_fx_graph_from_captured_output(out, fn, args, kwargs)
         return graph_module
