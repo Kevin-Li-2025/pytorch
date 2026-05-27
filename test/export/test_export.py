@@ -364,6 +364,44 @@ class TestDynamismExpression(TestCase):
             dynamic_shapes=dynamic_shapes,
         )
 
+    def _check_export_slice_static_bound_crosses_dynamic_dim(self, indices):
+        dynamic_shapes = {"x": {1: Dim("len", min=0, max=13)}}
+        for index in indices:
+            with self.subTest(index=index):
+
+                class Slice(torch.nn.Module):
+                    def forward(self, x):
+                        return x[:, index]
+
+                for width in (3, 8):
+                    x = torch.randn(4, width)
+                    ep = export(
+                        Slice(),
+                        (x,),
+                        dynamic_shapes=dynamic_shapes,
+                        strict=False,
+                    )
+                    self.assertEqual(len(ep.range_constraints), 1)
+                    for new_width in (0, 3, 5, 8, 13):
+                        y = torch.randn(4, new_width)
+                        self.assertEqual(ep.module()(y), y[:, index])
+
+    def test_export_slice_static_bound_crosses_dynamic_dim(self):
+        self._check_export_slice_static_bound_crosses_dynamic_dim((slice(None, 5),))
+
+    @testing.expectedFailureTrainingIRToRunDecomp
+    @testing.expectedFailureTrainingIRToRunDecompNonStrict
+    def test_export_slice_static_bound_crosses_dynamic_dim_variants(self):
+        self._check_export_slice_static_bound_crosses_dynamic_dim(
+            (
+                slice(5, None),
+                slice(None, -5),
+                slice(-5, None),
+                slice(3, 5),
+                slice(-5, -2),
+            )
+        )
+
     def test_no_grad_param_inplace(self):
         class Foo(torch.nn.Module):
             def __init__(self):
@@ -16933,7 +16971,7 @@ def forward(self, x):
                 for node in ep.graph.nodes
             ].count(True)
             if private_api:
-                self.assertEqual(num_asserts, 6)
+                self.assertEqual(num_asserts, 3)
                 with self.assertRaisesRegex(
                     RuntimeError,
                     r"Runtime assertion failed for expression Eq\(Mod\(s27\*s77, s77 - 1\), 0\)",
