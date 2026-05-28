@@ -660,11 +660,15 @@ class TestDecomp(TestCase):
 
     def test_bernoulli_invalid_probabilities(self, device):
         p_t = torch.full((4,), 2.0, dtype=torch.float32, device=device)
-        with self.assertRaisesRegex(RuntimeError, "bernoulli expects all probabilities to be in \\[0, 1\\]"):
+        with self.assertRaisesRegex(
+            RuntimeError, "bernoulli expects all probabilities to be in \\[0, 1\\]"
+        ):
             torch._decomp.decompositions.bernoulli(p_t)
 
         p_t_neg = torch.full((4,), -0.5, dtype=torch.float32, device=device)
-        with self.assertRaisesRegex(RuntimeError, "bernoulli expects all probabilities to be in \\[0, 1\\]"):
+        with self.assertRaisesRegex(
+            RuntimeError, "bernoulli expects all probabilities to be in \\[0, 1\\]"
+        ):
             torch._decomp.decompositions.bernoulli(p_t_neg)
 
     def test_bernoulli_compile_invalid_probabilities(self, device):
