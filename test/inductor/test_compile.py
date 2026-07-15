@@ -75,6 +75,22 @@ class TestStandaloneInductor(TestCase):
     going through TorchDynamo.
     """
 
+    def test_rejects_forward_ad_dual_input(self):
+        def fn(x):
+            return (x**2).sum()
+
+        compiled_fn = torch.compile(fn, backend="inductor")
+        primal = torch.tensor([0.1, 0.2, 0.3])
+        tangent = torch.ones(3)
+
+        with torch.autograd.forward_ad.dual_level():
+            dual = torch.autograd.forward_ad.make_dual(primal, tangent)
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "TorchInductor does not support forward-mode AD dual tensor inputs",
+            ):
+                compiled_fn(dual)
+
     def test_inductor_via_fx(self):
         mod = MyModule3().eval()
         inp = torch.randn(10)

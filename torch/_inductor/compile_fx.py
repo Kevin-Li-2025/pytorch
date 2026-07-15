@@ -2842,6 +2842,15 @@ def compile_fx(
     NB: This function TAKES OWNERSHIP of the input ``model_`` and can potentially
     mutate it!  Make a copy if you need to preserve the original GraphModule.
     """
+    if torch.autograd.forward_ad._current_level >= 0 and any(
+        isinstance(value, torch.Tensor)
+        and torch.autograd.forward_ad.unpack_dual(value).tangent is not None
+        for value in example_inputs_
+    ):
+        raise RuntimeError(
+            "TorchInductor does not support forward-mode AD dual tensor inputs"
+        )
+
     if decompositions is not None:
         get_decomp_fn: Callable[..., dict[Any, Callable[..., Any]]] = (
             _ConstantDecompTable(decompositions)
